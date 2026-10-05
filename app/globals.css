@@ -1,26 +1,129 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --c-app: #212121;
+  --c-panel: #171717;
+  --c-bubble: #303030;
+  --c-line: #3a3a3a;
+  --c-divider: #2f2f2f;
+  --c-hover: #2f2f2f;
+  --c-hover2: #424242;
+  --c-xhover: #3a3a3a;
+  --c-ink: #ececec;
+  --c-mute: #b4b4b4;
+  --c-faint: #8e8e8e;
+  --c-accent: #4a7fe8;
+  --c-accent-hover: #5c8ef0;
+  --c-accent-soft: #8ab0f5;
+  --c-accent-softbg: #2b3a5c;
+  --c-code: #0d0d0d;
+  --c-spin: #4a4a4a;
+  --c-composerline: transparent;
+}
+
+html.light {
+  --c-app: #ffffff;
+  --c-panel: #f9f9f9;
+  --c-bubble: #f4f4f4;
+  --c-line: #e3e3e3;
+  --c-divider: #ececec;
+  --c-hover: #ececec;
+  --c-hover2: #ebebeb;
+  --c-xhover: #e5e5e5;
+  --c-ink: #0d0d0d;
+  --c-mute: #5d5d5d;
+  --c-faint: #8f8f8f;
+  --c-accent: #4a7fe8;
+  --c-accent-hover: #3d6fd4;
+  --c-accent-soft: #3565d8;
+  --c-accent-softbg: #e8effc;
+  --c-code: #f7f7f7;
+  --c-spin: #d8d8d8;
+  --c-composerline: #e3e3e3;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-app: var(--c-app);
+  --color-panel: var(--c-panel);
+  --color-bubble: var(--c-bubble);
+  --color-line: var(--c-line);
+  --color-divider: var(--c-divider);
+  --color-hover: var(--c-hover);
+  --color-hover2: var(--c-hover2);
+  --color-xhover: var(--c-xhover);
+  --color-ink: var(--c-ink);
+  --color-mute: var(--c-mute);
+  --color-faint: var(--c-faint);
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-accent-softbg: var(--c-accent-softbg);
+  --color-code: var(--c-code);
+  --color-spin: var(--c-spin);
+  --color-composerline: var(--c-composerline);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--c-app);
+  color: var(--c-ink);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes floatSlow {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(1.5deg);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translateX(0px);
+  }
+  50% {
+    transform: translateX(8px);
+  }
+}
+
+.animate-float {
+  animation: float 7s ease-in-out infinite;
+}
+
+.animate-float-slow {
+  animation: floatSlow 10s ease-in-out infinite;
+}
+
+.animate-fade-up {
+  animation: fadeUp 700ms ease-out both;
+}
+
+.animate-drift {
+  animation: drift 12s ease-in-out infinite;
 }

@@ -1,36 +1,15 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
 ## Getting Started
-
-First, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Configure the variables from `.env.example` in `.env.local`. Keep `INSFORGE_API_KEY` server-only; never give it a `NEXT_PUBLIC_` prefix or commit its value.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The admin account identified by `ADMIN_EMAIL` can open `/admin` to manually grant or revoke plan access after confirming payment. A grant adds one calendar month. Basic is KES 200/month (25 generated documents and 5 uploads); Advanced is KES 900/month (50 longer, detailed Word documents, 15 uploads, and a five-person community including its owner). The app does not collect payments; configure the same admin email as `NEXT_PUBLIC_ADMIN_EMAIL` to show the admin link in the app sidebar.
 
-## Learn More
+The admin dashboard reports app-observed Gemini request and token usage, document/upload balances, request instructions, and generated document titles. These are usage figures recorded by this app, not Google account-level quota or billing balances. Communities are available to active Advanced plan owners; invites are email-bound and verified accounts are required. Community documents are private unless explicitly shared into that community.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `NEXT_PUBLIC_SITE_URL` to the canonical HTTPS origin in production so community invitation links use the intended host. For production, set the other environment variables in the hosting provider as well. Apply database schema updates through InsForge migrations before deploying code that depends on them.
