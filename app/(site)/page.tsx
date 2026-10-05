@@ -347,6 +347,9 @@ export default function LandingPage() {
                 Great for recurring reports and batches
               </li>
             </ul>
+            <p className="mt-6 border-t border-line pt-4 text-sm text-mute">
+              Pay KES 200 by M-Pesa Send Money to <strong className="text-ink">0117581499</strong> (Akai Loputo). Access starts after payment confirmation and admin activation.
+            </p>
           </div>
           <div className="rounded-3xl border border-accent/40 bg-app p-6 shadow-xl shadow-black/5">
             <div className="flex items-center justify-between gap-3">
@@ -377,6 +380,9 @@ export default function LandingPage() {
                 A five-person community to share documents and chat
               </li>
             </ul>
+            <p className="mt-6 border-t border-line pt-4 text-sm text-mute">
+              Pay KES 900 by M-Pesa Send Money to <strong className="text-ink">0117581499</strong> (Akai Loputo). Access starts after payment confirmation and admin activation.
+            </p>
           </div>
           </div>
         </div>
@@ -388,8 +394,8 @@ export default function LandingPage() {
             Ready to batch out some documents?
           </h2>
           <p className="max-w-md text-sm leading-relaxed text-mute">
-            Create and verify your account, then get Basic access activated by
-            the administrator to generate your documents.
+            Create and verify your account, pay for a plan using M-Pesa, and wait
+            for the administrator to confirm payment and activate access.
           </p>
           <Link
             href="/app"

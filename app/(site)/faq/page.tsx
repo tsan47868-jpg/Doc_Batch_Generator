@@ -45,13 +45,13 @@ const faqs: { q: string; a: string[] }[] = [
   {
     q: 'Is there a usage limit?',
     a: [
-      'Basic costs KES 200/month (25 generated documents and 5 sample uploads). Advanced costs KES 900/month (50 generated documents, 15 uploads, and a five-person community for sharing and chat). An administrator manually activates access after confirming payment; payments are not processed in the app.',
+      'Basic costs KES 200/month (25 generated documents and 5 sample uploads). Advanced costs KES 900/month (50 generated documents, 15 uploads, and a five-person community for sharing and chat). Pay the selected amount using M-Pesa Send Money to 0117581499, registered to Akai Loputo. An administrator confirms payment and activates access; payments are not processed automatically in the app.',
     ],
   },
   {
     q: 'How do I get Basic plan access?',
     a: [
-      'Create and verify your account, then contact the administrator to confirm payment and activate your monthly access.',
+      'Create and verify your account, send KES 200 using M-Pesa Send Money to 0117581499 (Akai Loputo), then keep your M-Pesa confirmation message. Your account unlocks after an administrator confirms payment and activates your plan.',
     ],
   },
   {

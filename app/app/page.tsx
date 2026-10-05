@@ -440,6 +440,7 @@ export default function Home() {
   const [authReady, setAuthReady] = useState(false);
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
+  const [paymentNumberCopied, setPaymentNumberCopied] = useState(false);
   const [history, setHistory] = useState<ChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sampleKey, setSampleKey] = useState<string | null>(null);
@@ -938,6 +939,72 @@ export default function Home() {
 
   if (!user) {
     return <AuthScreen onAuthed={handleAuthed} />;
+  }
+
+  if (!planStatus?.active) {
+    return (
+      <main className="grid min-h-dvh place-items-center bg-app px-4 py-10 text-ink">
+        <section className="w-full max-w-xl rounded-3xl border border-line bg-panel p-6 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Monthly plan required</p>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight">Choose a plan to unlock the app</h1>
+          <p className="mt-2 text-sm leading-relaxed text-mute">
+            Send the exact monthly price using M-Pesa Send Money. Generation and uploads stay locked until an administrator confirms your payment and activates your plan.
+          </p>
+
+          {planError ? (
+            <div role="alert" className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+              <p className="text-sm text-amber-500">{planError}</p>
+              <button type="button" onClick={() => void refreshPlan()} className="mt-2 text-sm font-medium text-ink underline underline-offset-4">
+                Check plan status again
+              </button>
+            </div>
+          ) : !planStatus ? (
+            <p role="status" className="mt-5 text-sm text-mute">Checking your plan status…</p>
+          ) : null}
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-line bg-app p-4">
+              <h2 className="font-medium">Basic</h2>
+              <p className="mt-1 text-xl font-semibold">KES 200 <span className="text-sm font-normal text-mute">/ month</span></p>
+              <p className="mt-2 text-xs text-mute">25 generated documents · 5 uploads</p>
+            </div>
+            <div className="rounded-2xl border border-accent/40 bg-app p-4">
+              <h2 className="font-medium">Advanced</h2>
+              <p className="mt-1 text-xl font-semibold">KES 900 <span className="text-sm font-normal text-mute">/ month</span></p>
+              <p className="mt-2 text-xs text-mute">50 documents · 15 uploads · five-person community</p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-line bg-app p-4">
+            <p className="text-sm font-medium">Pay by M-Pesa Send Money</p>
+            <p className="mt-2 text-sm text-mute">Send your selected plan amount to:</p>
+            <p className="mt-1 text-lg font-semibold tracking-wide">0117581499</p>
+            <p className="text-sm text-mute">Recipient name: Akai Loputo</p>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText('0117581499')
+                  .then(() => setPaymentNumberCopied(true))
+                  .catch(() => setPlanError('Could not copy the number automatically. Please select and copy it.'));
+              }}
+              className="mt-3 rounded-lg border border-line px-3 py-2 text-xs font-medium text-mute hover:bg-hover"
+            >
+              {paymentNumberCopied ? 'Number copied' : 'Copy payment number'}
+            </button>
+          </div>
+
+          <p className="mt-4 text-xs leading-relaxed text-faint">
+            Keep your M-Pesa confirmation message. Your account will remain locked until payment is confirmed and the plan is activated. Never share your M-Pesa PIN.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/" className="rounded-xl border border-line px-4 py-2.5 text-sm text-mute hover:bg-hover">View plans</Link>
+            <button type="button" onClick={() => void refreshPlan()} className="rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover">
+              I have paid — check access
+            </button>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   const inputBar = (
