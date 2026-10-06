@@ -3,6 +3,7 @@
 :root {
   --c-app: #212121;
   --c-panel: #171717;
+  --c-sidebar: #1e293b;
   --c-bubble: #303030;
   --c-line: #3a3a3a;
   --c-divider: #2f2f2f;
@@ -24,6 +25,7 @@
 html.light {
   --c-app: #ffffff;
   --c-panel: #f9f9f9;
+  --c-sidebar: #eaf0fb;
   --c-bubble: #f4f4f4;
   --c-line: #e3e3e3;
   --c-divider: #ececec;
@@ -47,6 +49,7 @@ html.light {
   --font-mono: var(--font-geist-mono);
   --color-app: var(--c-app);
   --color-panel: var(--c-panel);
+  --color-sidebar: var(--c-sidebar);
   --color-bubble: var(--c-bubble);
   --color-line: var(--c-line);
   --color-divider: var(--c-divider);

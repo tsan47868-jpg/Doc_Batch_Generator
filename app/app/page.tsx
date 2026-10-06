@@ -1386,7 +1386,7 @@ export default function Home() {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col bg-panel p-2 transition-transform duration-200 ease-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 flex-col bg-sidebar p-2 transition-transform duration-200 ease-out md:static md:translate-x-0 ${
           menuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
