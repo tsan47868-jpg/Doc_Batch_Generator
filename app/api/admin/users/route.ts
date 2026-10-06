@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminPageSession } from '@/lib/admin-security';
 import {
   authenticateRequest,
   getAdminBackendClient,
@@ -30,6 +31,8 @@ async function requireAdmin(request: NextRequest) {
       response: NextResponse.json({ error: 'Admin access is required.' }, { status: 403 }),
     };
   }
+  const sessionResponse = await requireAdminPageSession(request);
+  if (sessionResponse) return { user: null, response: sessionResponse };
   return auth;
 }
 

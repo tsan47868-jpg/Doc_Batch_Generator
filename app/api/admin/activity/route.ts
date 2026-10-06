@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminPageSession } from '@/lib/admin-security';
 import { authenticateRequest, getAdminBackendClient, isAdminEmail } from '@/lib/plan-access';
 
 export const runtime = 'nodejs';
@@ -22,6 +23,8 @@ export async function GET(request: NextRequest) {
     if (!auth.user.emailVerified || !isAdminEmail(auth.user.email)) {
       return NextResponse.json({ error: 'Admin access is required.' }, { status: 403 });
     }
+    const sessionResponse = await requireAdminPageSession(request);
+    if (sessionResponse) return sessionResponse;
 
     const userId = request.nextUrl.searchParams.get('userId') ?? '';
     if (!UUID_PATTERN.test(userId)) {

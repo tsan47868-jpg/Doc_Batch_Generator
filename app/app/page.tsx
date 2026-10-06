@@ -46,6 +46,14 @@ type PlanStatus = {
   };
 };
 
+type PaymentRequest = {
+  id: string;
+  plan_id: 'basic' | 'advanced';
+  mpesa_reference: string;
+  status: 'pending' | 'approved' | 'code_issued' | 'redeemed' | 'rejected';
+  created_at: string;
+};
+
 type DocRow = {
   doc_index: number;
   title: string;
@@ -441,6 +449,13 @@ export default function Home() {
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [paymentNumberCopied, setPaymentNumberCopied] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<'basic' | 'advanced'>('basic');
+  const [paymentReference, setPaymentReference] = useState('');
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+  const [paymentCode, setPaymentCode] = useState('');
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sampleKey, setSampleKey] = useState<string | null>(null);
@@ -467,6 +482,23 @@ export default function Home() {
     } catch (cause) {
       setPlanStatus(null);
       setPlanError(cause instanceof Error ? cause.message : 'Could not load plan status.');
+    }
+  }, []);
+
+  const refreshPaymentRequest = useCallback(async () => {
+    try {
+      const response = await fetch('/api/payments', {
+        headers: insforge.getHttpClient().getHeaders(),
+        cache: 'no-store',
+      });
+      const result = (await response.json()) as {
+        paymentRequest?: PaymentRequest | null;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error || 'Could not load payment status.');
+      setPaymentRequest(result.paymentRequest ?? null);
+    } catch (cause) {
+      setPaymentError(cause instanceof Error ? cause.message : 'Could not load payment status.');
     }
   }, []);
 
@@ -500,12 +532,15 @@ export default function Home() {
       if (cancelled) return;
       setUser(data?.user ?? null);
       setAuthReady(true);
-      if (data?.user) void refreshPlan();
+      if (data?.user) {
+        void refreshPlan();
+        void refreshPaymentRequest();
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [refreshPlan]);
+  }, [refreshPaymentRequest, refreshPlan]);
 
   useEffect(() => {
     if (!user) return;
@@ -929,6 +964,64 @@ export default function Home() {
   const canSend = !busy && (input.trim().length > 0 || file !== null);
   const failedCount = Object.keys(failed).length;
 
+  async function submitPaymentRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPaymentBusy(true);
+    setPaymentError(null);
+    setPaymentMessage(null);
+    try {
+      const response = await fetch('/api/payments', {
+        method: 'POST',
+        headers: {
+          ...insforge.getHttpClient().getHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planId: selectedPlan,
+          mpesaReference: paymentReference,
+        }),
+      });
+      const result = (await response.json()) as {
+        paymentRequest?: PaymentRequest;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error || 'Could not submit payment for review.');
+      setPaymentRequest(result.paymentRequest ?? null);
+      setPaymentReference('');
+      setPaymentMessage('Payment submitted. An administrator will review it and either activate your plan or send you an access code.');
+    } catch (cause) {
+      setPaymentError(cause instanceof Error ? cause.message : 'Could not submit payment for review.');
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
+
+  async function redeemPaymentCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPaymentBusy(true);
+    setPaymentError(null);
+    setPaymentMessage(null);
+    try {
+      const response = await fetch('/api/payments', {
+        method: 'PATCH',
+        headers: {
+          ...insforge.getHttpClient().getHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code: paymentCode }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Could not redeem the access code.');
+      setPaymentCode('');
+      setPaymentMessage('Code accepted. Your plan is active now.');
+      await Promise.all([refreshPlan(), refreshPaymentRequest()]);
+    } catch (cause) {
+      setPaymentError(cause instanceof Error ? cause.message : 'Could not redeem the access code.');
+    } finally {
+      setPaymentBusy(false);
+    }
+  }
+
   if (!authReady) {
     return (
       <div className="flex h-dvh items-center justify-center bg-app">
@@ -948,7 +1041,7 @@ export default function Home() {
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Monthly plan required</p>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight">Choose a plan to unlock the app</h1>
           <p className="mt-2 text-sm leading-relaxed text-mute">
-            Send the exact monthly price using M-Pesa Send Money. Generation and uploads stay locked until an administrator confirms your payment and activates your plan.
+            Pay from your M-Pesa phone, then send us the transaction code from your confirmation message. We will check the payment and unlock your plan after confirming it.
           </p>
 
           {planError ? (
@@ -963,21 +1056,47 @@ export default function Home() {
           ) : null}
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-line bg-app p-4">
-              <h2 className="font-medium">Basic</h2>
-              <p className="mt-1 text-xl font-semibold">KES 200 <span className="text-sm font-normal text-mute">/ month</span></p>
-              <p className="mt-2 text-xs text-mute">25 generated documents · 5 uploads</p>
-            </div>
-            <div className="rounded-2xl border border-accent/40 bg-app p-4">
-              <h2 className="font-medium">Advanced</h2>
-              <p className="mt-1 text-xl font-semibold">KES 900 <span className="text-sm font-normal text-mute">/ month</span></p>
-              <p className="mt-2 text-xs text-mute">50 documents · 15 uploads · five-person community</p>
-            </div>
+            <button
+              type="button"
+              aria-pressed={selectedPlan === 'basic'}
+              onClick={() => setSelectedPlan('basic')}
+              className={`rounded-2xl border bg-app p-4 text-left transition-colors ${
+                selectedPlan === 'basic' ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-accent/50'
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-medium">Basic</span>
+                <span className="text-xs text-accent">{selectedPlan === 'basic' ? 'Selected' : 'Select plan'}</span>
+              </span>
+              <span className="mt-1 block text-xl font-semibold">KES 200 <span className="text-sm font-normal text-mute">/ month</span></span>
+              <span className="mt-2 block text-xs text-mute">25 generated documents · 5 uploads</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={selectedPlan === 'advanced'}
+              onClick={() => setSelectedPlan('advanced')}
+              className={`rounded-2xl border bg-app p-4 text-left transition-colors ${
+                selectedPlan === 'advanced' ? 'border-accent ring-1 ring-accent' : 'border-line hover:border-accent/50'
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="font-medium">Advanced</span>
+                <span className="text-xs text-accent">{selectedPlan === 'advanced' ? 'Selected' : 'Select plan'}</span>
+              </span>
+              <span className="mt-1 block text-xl font-semibold">KES 900 <span className="text-sm font-normal text-mute">/ month</span></span>
+              <span className="mt-2 block text-xs text-mute">50 documents · 15 uploads · five-person community</span>
+            </button>
           </div>
 
           <div className="mt-5 rounded-2xl border border-line bg-app p-4">
-            <p className="text-sm font-medium">Pay by M-Pesa Send Money</p>
-            <p className="mt-2 text-sm text-mute">Send your selected plan amount to:</p>
+            <p className="text-sm font-medium">How to pay with M-Pesa</p>
+            <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-mute">
+              <li>On your phone, open M-Pesa and choose Send Money.</li>
+              <li>Send the exact amount for your selected plan to this number:</li>
+            </ol>
+            <p className="mt-2 text-sm text-mute">
+              Amount: <span className="font-medium text-ink">KES {selectedPlan === 'basic' ? '200' : '900'}</span> for {selectedPlan === 'basic' ? 'Basic' : 'Advanced'}
+            </p>
             <p className="mt-1 text-lg font-semibold tracking-wide">0117581499</p>
             <p className="text-sm text-mute">Recipient name: Akai Loputo</p>
             <button
@@ -991,11 +1110,90 @@ export default function Home() {
             >
               {paymentNumberCopied ? 'Number copied' : 'Copy payment number'}
             </button>
+            <p className="mt-3 text-xs leading-relaxed text-faint">
+              After sending, keep the M-Pesa confirmation message. Enter its transaction code below. We will check the code against the payment received on our M-Pesa account and approve your plan manually.
+            </p>
           </div>
 
+          {paymentRequest && (
+            <div className="mt-5 rounded-2xl border border-accent/30 bg-app p-4">
+              <p className="text-sm font-medium">Latest payment submission</p>
+              <p className="mt-1 text-xs text-mute">
+                {paymentRequest.plan_id === 'advanced' ? 'Advanced' : 'Basic'} · receipt {paymentRequest.mpesa_reference}
+              </p>
+              <p className="mt-2 text-sm text-ink">
+                Status: {paymentRequest.status === 'pending'
+                  ? 'Waiting for administrator review'
+                  : paymentRequest.status === 'code_issued'
+                    ? 'Access code issued — check your messages'
+                    : paymentRequest.status === 'approved'
+                      ? 'Payment approved — refresh access below'
+                      : paymentRequest.status === 'redeemed'
+                        ? 'Access code redeemed'
+                        : 'Not approved — submit a new payment receipt if needed'}
+              </p>
+            </div>
+          )}
+
+          <form onSubmit={submitPaymentRequest} className="mt-5 rounded-2xl border border-line bg-app p-4">
+            <label htmlFor="mpesa-reference" className="block text-sm font-medium">
+              M-Pesa receipt code
+            </label>
+            <p className="mt-1 text-xs text-mute">Enter the transaction code from the confirmation message you received after sending money.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                id="mpesa-reference"
+                required
+                minLength={5}
+                maxLength={20}
+                autoComplete="off"
+                value={paymentReference}
+                onChange={(event) => setPaymentReference(event.target.value.toUpperCase())}
+                placeholder="e.g. QWE123ABC4"
+                className="min-w-0 flex-1 rounded-xl border border-line bg-panel px-3 py-2.5 text-sm uppercase text-ink outline-none focus:border-accent"
+              />
+              <button
+                type="submit"
+                disabled={paymentBusy || paymentRequest?.status === 'pending'}
+                className="rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {paymentBusy ? 'Submitting…' : 'Submit for review'}
+              </button>
+            </div>
+            {paymentRequest?.status === 'pending' && (
+              <p className="mt-2 text-xs text-faint">Your current receipt is waiting for review before another can be submitted.</p>
+            )}
+          </form>
+
+          <form onSubmit={redeemPaymentCode} className="mt-4 rounded-2xl border border-line bg-app p-4">
+            <label htmlFor="payment-code" className="block text-sm font-medium">Have an access code?</label>
+            <p className="mt-1 text-xs text-mute">Enter the one-time code the administrator sent to this account.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                id="payment-code"
+                required
+                maxLength={44}
+                autoComplete="off"
+                value={paymentCode}
+                onChange={(event) => setPaymentCode(event.target.value.toUpperCase())}
+                placeholder="36-character access code"
+                className="min-w-0 flex-1 rounded-xl border border-line bg-panel px-3 py-2.5 text-sm uppercase text-ink outline-none focus:border-accent"
+              />
+              <button
+                type="submit"
+                disabled={paymentBusy}
+                className="rounded-xl border border-accent px-4 py-2.5 text-sm font-medium text-accent hover:bg-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {paymentBusy ? 'Checking…' : 'Redeem code'}
+              </button>
+            </div>
+          </form>
+
           <p className="mt-4 text-xs leading-relaxed text-faint">
-            Keep your M-Pesa confirmation message. Your account will remain locked until payment is confirmed and the plan is activated. Never share your M-Pesa PIN.
+            Submitting the code only notifies us to check your payment; it does not charge you or activate access automatically. Never share your M-Pesa PIN.
           </p>
+          {paymentError && <p role="alert" className="mt-4 text-sm text-amber-500">{paymentError}</p>}
+          {paymentMessage && <p role="status" className="mt-4 text-sm text-emerald-500">{paymentMessage}</p>}
           <div className="mt-6 flex flex-wrap gap-3">
             <Link href="/" className="rounded-xl border border-line px-4 py-2.5 text-sm text-mute hover:bg-hover">View plans</Link>
             <button type="button" onClick={() => void refreshPlan()} className="rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover">
