@@ -7,6 +7,25 @@ const OPENROUTER_BASE = 'https://openrouter.ai/api/v1/chat/completions';
 
 const TRANSIENT = [500, 502, 503, 504];
 
+type Provider = 'gemini' | 'openrouter';
+
+const DOWN_COOLDOWN_MS = 60_000;
+const AUTH_COOLDOWN_MS = 10 * 60_000;
+const QUOTA_COOLDOWN_MS = 30 * 60_000;
+
+const providerAvailableUntil: Record<Provider, number> = { gemini: 0, openrouter: 0 };
+
+function markProviderUnavailable(provider: Provider, ms: number): void {
+  const until = Date.now() + Math.max(ms, 0);
+  if (until > providerAvailableUntil[provider]) {
+    providerAvailableUntil[provider] = until;
+  }
+}
+
+function isProviderAvailable(provider: Provider): boolean {
+  return Date.now() >= providerAvailableUntil[provider];
+}
+
 export type GeminiAttempt = {
   model: string;
   httpStatus: number | null;
@@ -149,6 +168,7 @@ async function openRouterJson<T>(
         await new Promise((r) => setTimeout(r, attempt * 2000));
         continue;
       }
+      markProviderUnavailable('openrouter', DOWN_COOLDOWN_MS);
       throw lastError;
     }
 
@@ -174,6 +194,11 @@ async function openRouterJson<T>(
       if ((TRANSIENT.includes(res.status) || res.status === 429) && attempt < attempts) {
         await new Promise((r) => setTimeout(r, attempt * 3000));
         continue;
+      }
+      if (TRANSIENT.includes(res.status) || res.status === 429) {
+        markProviderUnavailable('openrouter', DOWN_COOLDOWN_MS);
+      } else if (res.status === 401 || res.status === 402 || res.status === 403) {
+        markProviderUnavailable('openrouter', AUTH_COOLDOWN_MS);
       }
       throw lastError;
     }
@@ -239,7 +264,7 @@ async function openRouterJson<T>(
   throw lastError;
 }
 
-export async function geminiJson<T>(
+async function geminiJsonOnce<T>(
   apiKey: string,
   prompt: string,
   schema: object,
@@ -247,13 +272,10 @@ export async function geminiJson<T>(
   attempts = 4,
   options: GeminiJsonOptions = {},
 ): Promise<T> {
-  const hasGeminiKey = Boolean(apiKey && apiKey.trim() && !apiKey.startsWith('AQ.'));
-  const hasOpenRouterKey = Boolean(OPENROUTER_API_KEY && OPENROUTER_API_KEY.trim());
-
   let lastError: Error = new Error('Generation request failed');
 
-  // Try Google Gemini API if a valid key is provided
-  if (hasGeminiKey) {
+  // Attempt Google Gemini; on failure the caller falls through to OpenRouter.
+  if (apiKey) {
     for (let attempt = 1; attempt <= attempts; attempt++) {
       let res: Response;
       try {
@@ -281,6 +303,7 @@ export async function geminiJson<T>(
           success: false,
         });
         lastError = error instanceof Error ? error : new Error('Gemini network error');
+        markProviderUnavailable('gemini', DOWN_COOLDOWN_MS);
         break; // break loop to try fallback
       }
 
@@ -327,6 +350,10 @@ export async function geminiJson<T>(
           lastError = new GeminiQuotaError(
             `Gemini quota reached for this API key${resets}.`,
           );
+          markProviderUnavailable(
+            'gemini',
+            retryDelaySeconds > 0 ? retryDelaySeconds * 1000 : QUOTA_COOLDOWN_MS,
+          );
           break; // break to fallback
         }
 
@@ -335,6 +362,9 @@ export async function geminiJson<T>(
           const delayMs = retryDelaySeconds > 0 ? Math.min(retryDelaySeconds * 1000, 15_000) : attempt * 5000;
           await new Promise((r) => setTimeout(r, delayMs));
           continue;
+        }
+        if (TRANSIENT.includes(res.status) || res.status === 429) {
+          markProviderUnavailable('gemini', DOWN_COOLDOWN_MS);
         }
         break; // break to fallback
       }
@@ -407,13 +437,57 @@ export async function geminiJson<T>(
     }
   }
 
-  // If Gemini failed or is not configured, fall back to OpenRouter alternative
-  if (hasOpenRouterKey) {
+  throw lastError;
+}
+
+export async function geminiJson<T>(
+  apiKey: string,
+  prompt: string,
+  schema: object,
+  temperature = 0.9,
+  attempts = 4,
+  options: GeminiJsonOptions = {},
+): Promise<T> {
+  const hasGeminiKey = Boolean(apiKey && apiKey.trim() && !apiKey.startsWith('AQ.'));
+  const hasOpenRouterKey = Boolean(OPENROUTER_API_KEY && OPENROUTER_API_KEY.trim());
+
+  let candidates: Provider[] = [];
+  if (hasGeminiKey && hasOpenRouterKey) {
+    const geminiUp = isProviderAvailable('gemini');
+    const openRouterUp = isProviderAvailable('openrouter');
+    if (geminiUp && openRouterUp) {
+      candidates = ['gemini', 'openrouter'];
+    } else if (geminiUp) {
+      candidates = ['gemini'];
+      console.warn('openrouter is cooling down; using gemini.');
+    } else if (openRouterUp) {
+      candidates = ['openrouter'];
+      console.warn('gemini is cooling down; using openrouter.');
+    } else {
+      // Both are cooling down — attempt them anyway rather than failing outright.
+      candidates = ['gemini', 'openrouter'];
+    }
+  } else if (hasGeminiKey) {
+    candidates = ['gemini'];
+  } else if (hasOpenRouterKey) {
+    candidates = ['openrouter'];
+  }
+
+  let lastError: Error = new Error('Generation request failed');
+
+  for (const provider of candidates) {
     try {
-      return await openRouterJson<T>(prompt, schema, temperature, attempts, options);
-    } catch (openRouterError) {
-      console.error('OpenRouter fallback also failed:', openRouterError);
-      throw openRouterError instanceof Error ? openRouterError : lastError;
+      if (provider === 'gemini') {
+        const result = await geminiJsonOnce<T>(apiKey, prompt, schema, temperature, attempts, options);
+        providerAvailableUntil.gemini = 0;
+        return result;
+      }
+      const result = await openRouterJson<T>(prompt, schema, temperature, attempts, options);
+      providerAvailableUntil.openrouter = 0;
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(`${provider} request failed`);
+      console.error(`${provider} failed, falling through to the next provider:`, lastError.message);
     }
   }
 
