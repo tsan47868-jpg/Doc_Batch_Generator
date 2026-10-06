@@ -202,6 +202,32 @@ function HomeIcon() {
   );
 }
 
+function CopyIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+function CheckIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}
+
+function EditIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </svg>
+  );
+}
+
 type AuthMode = 'signin' | 'signup' | 'verify';
 
 function AuthScreen({ onAuthed }: { onAuthed: (user: UserSchema) => void }) {
@@ -465,6 +491,12 @@ export default function Home() {
   const [history, setHistory] = useState<ChatSummary[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [sampleKey, setSampleKey] = useState<string | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editContent, setEditContent] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sampleRef = useRef<{ file: File; instructions: string } | null>(null);
@@ -624,7 +656,98 @@ export default function Home() {
     setPreviewIndex(null);
     setActiveChatId(null);
     setSampleKey(null);
+    setCopiedIndex(null);
+    setEditingIndex(null);
+    setEditTitle('');
+    setEditDescription('');
+    setEditContent('');
+    setSavingEdit(false);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
+  }
+
+  function copyDoc(doc: DocResult) {
+    const textToCopy = `${doc.title}\n\n${doc.content}`;
+    void navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopiedIndex(doc.index);
+      setTimeout(() => {
+        setCopiedIndex((curr) => (curr === doc.index ? null : curr));
+      }, 2000);
+    }).catch(() => {
+      setError('Could not copy to clipboard. Please copy manually.');
+    });
+  }
+
+  function startEditing(doc: DocResult) {
+    setEditingIndex(doc.index);
+    setEditTitle(doc.title);
+    setEditDescription(doc.description || '');
+    setEditContent(doc.content);
+    setPreviewIndex(null);
+  }
+
+  function cancelEditing() {
+    setEditingIndex(null);
+    setEditTitle('');
+    setEditDescription('');
+    setEditContent('');
+  }
+
+  async function saveEditing(index: number) {
+    if (!editTitle.trim()) {
+      setError('Title cannot be empty.');
+      return;
+    }
+    setSavingEdit(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/documents/update', {
+        method: 'POST',
+        headers: {
+          ...insforge.getHttpClient().getHeaders(),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chatId: activeChatId || chatIdRef.current,
+          docIndex: index,
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          content: editContent,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to save edits.');
+      }
+
+      setResults((prev) =>
+        prev.map((r) =>
+          r.index === index
+            ? {
+                ...r,
+                title: data.title,
+                description: data.description,
+                content: data.content,
+                docx: data.docx || r.docx,
+                docxKey: data.docxKey || r.docxKey,
+              }
+            : r,
+        ),
+      );
+
+      setPlans((prev) =>
+        prev.map((p, i) =>
+          i === index
+            ? { title: data.title, description: data.description }
+            : p,
+        ),
+      );
+
+      setEditingIndex(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save edits.');
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   function autoGrow(el: HTMLTextAreaElement) {
@@ -1612,16 +1735,50 @@ export default function Home() {
                                   </p>
                                 </div>
                                 {result ? (
-                                  <div className="flex shrink-0 items-center gap-2">
+                                  <div className="flex flex-wrap shrink-0 items-center gap-2">
                                     <button
-                                      onClick={() =>
-                                        setPreviewIndex(previewIndex === i ? null : i)
-                                      }
+                                      type="button"
+                                      onClick={() => copyDoc(result)}
+                                      title="Copy document text"
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-xs text-mute transition-colors hover:bg-hover hover:text-ink"
+                                    >
+                                      {copiedIndex === i ? (
+                                        <>
+                                          <CheckIcon className="h-3.5 w-3.5 text-emerald-500" />
+                                          <span className="text-emerald-500 font-medium">Copied!</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <CopyIcon />
+                                          <span>Copy</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => (editingIndex === i ? cancelEditing() : startEditing(result))}
+                                      title="Edit document"
+                                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors ${
+                                        editingIndex === i
+                                          ? 'border-accent bg-accent/10 text-accent font-medium'
+                                          : 'border-line text-mute hover:bg-hover hover:text-ink'
+                                      }`}
+                                    >
+                                      <EditIcon />
+                                      <span>{editingIndex === i ? 'Editing' : 'Edit'}</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (editingIndex === i) cancelEditing();
+                                        setPreviewIndex(previewIndex === i ? null : i);
+                                      }}
                                       className="rounded-full border border-line px-3 py-1 text-xs text-mute transition-colors hover:bg-hover hover:text-ink"
                                     >
                                       {previewIndex === i ? 'Hide' : 'Preview'}
                                     </button>
                                     <button
+                                      type="button"
                                       onClick={() => downloadOne(result)}
                                       className="rounded-full bg-accent px-3.5 py-1 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
                                     >
@@ -1639,10 +1796,128 @@ export default function Home() {
                                   <Spinner className="mt-1" />
                                 )}
                               </div>
-                              {result && previewIndex === i && (
-                                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-code p-3 text-xs leading-relaxed text-mute">
-                                  {result.content}
-                                </pre>
+
+                              {result && editingIndex === i && (
+                                <div className="mt-3 space-y-3 rounded-2xl border border-accent/40 bg-app p-4 shadow-sm">
+                                  <div className="flex items-center justify-between border-b border-divider pb-2">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-accent">
+                                      Edit Document
+                                    </span>
+                                    <span className="text-[11px] text-faint">
+                                      {editContent.trim().split(/\s+/).filter(Boolean).length} words · {editContent.length} chars
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium text-mute">Title</label>
+                                    <input
+                                      type="text"
+                                      value={editTitle}
+                                      onChange={(e) => setEditTitle(e.target.value)}
+                                      maxLength={200}
+                                      placeholder="Document Title"
+                                      className="w-full rounded-xl border border-line bg-panel px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium text-mute">
+                                      Description / Purpose
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={editDescription}
+                                      onChange={(e) => setEditDescription(e.target.value)}
+                                      maxLength={2000}
+                                      placeholder="Brief description of this document"
+                                      className="w-full rounded-xl border border-line bg-panel px-3 py-1.5 text-xs text-ink outline-none focus:border-accent"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <div className="mb-1 flex items-center justify-between">
+                                      <label className="block text-xs font-medium text-mute">
+                                        Content (Markdown)
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          void navigator.clipboard.writeText(editContent).then(() => {
+                                            setCopiedIndex(i);
+                                            setTimeout(() => setCopiedIndex((c) => (c === i ? null : c)), 2000);
+                                          });
+                                        }}
+                                        className="inline-flex items-center gap-1 text-[11px] text-mute hover:text-ink"
+                                      >
+                                        <CopyIcon className="h-3 w-3" />
+                                        {copiedIndex === i ? 'Copied content!' : 'Copy raw content'}
+                                      </button>
+                                    </div>
+                                    <textarea
+                                      value={editContent}
+                                      onChange={(e) => setEditContent(e.target.value)}
+                                      rows={10}
+                                      placeholder="Document content in markdown..."
+                                      className="w-full resize-y rounded-xl border border-line bg-code p-3 font-mono text-xs leading-relaxed text-ink outline-none focus:border-accent"
+                                    />
+                                  </div>
+
+                                  <div className="flex items-center justify-end gap-2 pt-1">
+                                    <button
+                                      type="button"
+                                      onClick={cancelEditing}
+                                      disabled={savingEdit}
+                                      className="rounded-full border border-line px-4 py-1.5 text-xs font-medium text-mute hover:bg-hover hover:text-ink disabled:opacity-50"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => saveEditing(i)}
+                                      disabled={savingEdit || !editTitle.trim()}
+                                      className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
+                                    >
+                                      {savingEdit && <Spinner className="h-3.5 w-3.5" />}
+                                      {savingEdit ? 'Saving changes…' : 'Save changes'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {result && previewIndex === i && editingIndex !== i && (
+                                <div className="mt-3 space-y-2">
+                                  <div className="flex items-center justify-between px-1 text-xs text-faint">
+                                    <span>Markdown preview</span>
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => copyDoc(result)}
+                                        className="inline-flex items-center gap-1 text-xs text-mute hover:text-ink"
+                                      >
+                                        {copiedIndex === i ? (
+                                          <span className="font-medium text-emerald-500">Copied!</span>
+                                        ) : (
+                                          <>
+                                            <CopyIcon className="h-3 w-3" />
+                                            <span>Copy</span>
+                                          </>
+                                        )}
+                                      </button>
+                                      <span>·</span>
+                                      <button
+                                        type="button"
+                                        onClick={() => startEditing(result)}
+                                        className="inline-flex items-center gap-1 text-xs text-mute hover:text-ink"
+                                      >
+                                        <EditIcon className="h-3 w-3" />
+                                        <span>Edit</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-code p-3 text-xs leading-relaxed text-mute">
+                                    {result.content}
+                                  </pre>
+                                </div>
                               )}
                             </div>
                           );

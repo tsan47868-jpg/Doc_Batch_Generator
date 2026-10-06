@@ -195,10 +195,11 @@ export async function POST(req: NextRequest) {
   }
   const batchSize = Math.min(DOC_COUNT, remainingDocuments);
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+  if (!apiKey && !openRouterKey) {
     return NextResponse.json(
-      { error: 'Server is missing GEMINI_API_KEY. Add it to .env.local.' },
+      { error: 'Server is missing AI API configuration (GEMINI_API_KEY or OPENROUTER_API_KEY). Add it to .env.local.' },
       { status: 500 },
     );
   }
