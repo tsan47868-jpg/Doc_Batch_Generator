@@ -60,7 +60,7 @@ export async function authenticateRequest(request: NextRequest) {
   if (error || !data?.user) {
     return {
       user: null,
-      response: NextResponse.json({ error: 'Your session is invalid or expired. Sign in again.' }, { status: 401 }),
+      response: NextResponse.json({ error: 'Session expired.' }, { status: 401 }),
     };
   }
 
@@ -72,6 +72,45 @@ export function isAdminEmail(email: string | undefined) {
   return Boolean(adminEmail && email?.trim().toLowerCase() === adminEmail);
 }
 
+const ADMIN_PLAN_EXPIRES_AT = '2100-01-01T00:00:00.000Z';
+
+// The admin account operates the payment workflow and never pays for its own access.
+export async function ensureAdminPlanAccess(user: { id: string; email?: string }) {
+  if (!isAdminEmail(user.email)) return;
+
+  const admin = getAdminBackendClient();
+  const now = new Date();
+  const { data, error } = await admin
+    .database.from('user_plan_access')
+    .select('status, expires_at')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const active = Boolean(
+    data &&
+      data.status === 'active' &&
+      new Date(data.expires_at).getTime() > now.getTime(),
+  );
+  if (active) return;
+
+  const { error: writeError } = await admin.database.from('user_plan_access').upsert(
+    [
+      {
+        user_id: user.id,
+        plan_id: 'advanced',
+        status: 'active',
+        starts_at: now.toISOString(),
+        expires_at: ADMIN_PLAN_EXPIRES_AT,
+        updated_by: user.id,
+        updated_at: now.toISOString(),
+      },
+    ],
+    { onConflict: 'user_id' },
+  );
+  if (writeError) throw new Error(writeError.message);
+}
+
 export function getCurrentUtcMonthStart() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
@@ -79,7 +118,9 @@ export function getCurrentUtcMonthStart() {
     .slice(0, 10);
 }
 
-export async function getUserPlanState(userId: string) {
+export async function getUserPlanState(user: { id: string; email?: string }) {
+  await ensureAdminPlanAccess(user);
+  const userId = user.id;
   const admin = getAdminBackendClient();
   const [accessResult, usageResult] = await Promise.all([
     admin

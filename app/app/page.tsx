@@ -77,6 +77,12 @@ function slug(t: string) {
   );
 }
 
+function isExpiredSessionMessage(message: string | null | undefined) {
+  return /invalid or expired|sign in again|sign in to continue/i.test(
+    message ?? '',
+  );
+}
+
 function base64ToBlob(b64: string): Blob {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -477,11 +483,28 @@ export default function Home() {
         cache: 'no-store',
       });
       const result = (await response.json()) as PlanStatus & { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Could not load plan status.');
+      if (!response.ok) {
+        if (response.status === 401 || isExpiredSessionMessage(result.error)) {
+          setUser(null);
+          setAuthReady(true);
+          setPlanStatus(null);
+          setPaymentRequest(null);
+          return;
+        }
+        throw new Error(result.error || 'Could not load plan status.');
+      }
       setPlanStatus(result);
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not load plan status.';
+      if (isExpiredSessionMessage(message)) {
+        setUser(null);
+        setAuthReady(true);
+        setPlanStatus(null);
+        setPaymentRequest(null);
+        return;
+      }
       setPlanStatus(null);
-      setPlanError(cause instanceof Error ? cause.message : 'Could not load plan status.');
+      setPlanError(message);
     }
   }, []);
 
@@ -495,10 +518,25 @@ export default function Home() {
         paymentRequest?: PaymentRequest | null;
         error?: string;
       };
-      if (!response.ok) throw new Error(result.error || 'Could not load payment status.');
+      if (!response.ok) {
+        if (response.status === 401 || isExpiredSessionMessage(result.error)) {
+          setUser(null);
+          setAuthReady(true);
+          setPaymentRequest(null);
+          return;
+        }
+        throw new Error(result.error || 'Could not load payment status.');
+      }
       setPaymentRequest(result.paymentRequest ?? null);
     } catch (cause) {
-      setPaymentError(cause instanceof Error ? cause.message : 'Could not load payment status.');
+      const message = cause instanceof Error ? cause.message : 'Could not load payment status.';
+      if (isExpiredSessionMessage(message)) {
+        setUser(null);
+        setAuthReady(true);
+        setPaymentRequest(null);
+        return;
+      }
+      setPaymentError(message);
     }
   }, []);
 
@@ -743,7 +781,14 @@ export default function Home() {
         cache: 'no-store',
       });
       const plan = (await planResponse.json()) as PlanStatus & { error?: string };
-      if (!planResponse.ok) throw new Error(plan.error || 'Could not verify plan access.');
+      if (!planResponse.ok) {
+        if (planResponse.status === 401 || isExpiredSessionMessage(plan.error)) {
+          setUser(null);
+          setAuthReady(true);
+          return;
+        }
+        throw new Error(plan.error || 'Could not verify plan access.');
+      }
       setPlanStatus(plan);
       if (!plan.active) {
         setError('Your plan is not active. Contact the administrator for access.');
@@ -985,12 +1030,25 @@ export default function Home() {
         paymentRequest?: PaymentRequest;
         error?: string;
       };
-      if (!response.ok) throw new Error(result.error || 'Could not submit payment for review.');
+      if (!response.ok) {
+        if (response.status === 401 || isExpiredSessionMessage(result.error)) {
+          setUser(null);
+          setAuthReady(true);
+          return;
+        }
+        throw new Error(result.error || 'Could not submit payment for review.');
+      }
       setPaymentRequest(result.paymentRequest ?? null);
       setPaymentReference('');
       setPaymentMessage('Payment submitted. An administrator will review it and either activate your plan or send you an access code.');
     } catch (cause) {
-      setPaymentError(cause instanceof Error ? cause.message : 'Could not submit payment for review.');
+      const message = cause instanceof Error ? cause.message : 'Could not submit payment for review.';
+      if (isExpiredSessionMessage(message)) {
+        setUser(null);
+        setAuthReady(true);
+        return;
+      }
+      setPaymentError(message);
     } finally {
       setPaymentBusy(false);
     }
@@ -1011,12 +1069,25 @@ export default function Home() {
         body: JSON.stringify({ code: paymentCode }),
       });
       const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error || 'Could not redeem the access code.');
+      if (!response.ok) {
+        if (response.status === 401 || isExpiredSessionMessage(result.error)) {
+          setUser(null);
+          setAuthReady(true);
+          return;
+        }
+        throw new Error(result.error || 'Could not redeem the access code.');
+      }
       setPaymentCode('');
       setPaymentMessage('Code accepted. Your plan is active now.');
       await Promise.all([refreshPlan(), refreshPaymentRequest()]);
     } catch (cause) {
-      setPaymentError(cause instanceof Error ? cause.message : 'Could not redeem the access code.');
+      const message = cause instanceof Error ? cause.message : 'Could not redeem the access code.';
+      if (isExpiredSessionMessage(message)) {
+        setUser(null);
+        setAuthReady(true);
+        return;
+      }
+      setPaymentError(message);
     } finally {
       setPaymentBusy(false);
     }

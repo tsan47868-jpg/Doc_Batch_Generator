@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
     if (error) throw new Error(error.message);
 
     const communityIds = (memberships ?? []).map((item) => item.community_id);
-    const ownerPlan = await getUserPlanState(auth.user.id);
+    const ownerPlan = await getUserPlanState(auth.user);
     if (!communityIds.length) {
       return NextResponse.json({
         communities: [],
@@ -233,7 +233,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'create') {
-      const plan = await getUserPlanState(auth.user.id);
+      const plan = await getUserPlanState(auth.user);
       if (!plan.active || plan.plan !== 'advanced') {
         return NextResponse.json({ error: 'An active Advanced plan is required to create a community.' }, { status: 403 });
       }

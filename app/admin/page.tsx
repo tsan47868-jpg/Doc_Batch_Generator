@@ -88,10 +88,16 @@ function showAdminGateForResponse(
   response: Response,
   setUnlocked: (unlocked: boolean) => void,
   setGateError: (error: string) => void,
+  setSignIn: (needed: boolean) => void,
   error?: string,
 ) {
   if (response.status !== 401 && response.status !== 429) return;
   setUnlocked(false);
+  if (response.status === 401 && /sign in to continue|session expired/i.test(error || '')) {
+    setSignIn(true);
+    setGateError('');
+    return;
+  }
   setGateError(error || 'Unlock the admin page to continue.');
 }
 
@@ -112,6 +118,10 @@ export default function AdminPage() {
   const [issuedCode, setIssuedCode] = useState<{ email: string; code: string } | null>(null);
   const [adminGateChecking, setAdminGateChecking] = useState(true);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [adminEmail, setAdminEmail] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [signInBusy, setSignInBusy] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
   const [adminGateError, setAdminGateError] = useState('');
   const [adminGateBusy, setAdminGateBusy] = useState(false);
@@ -136,7 +146,7 @@ export default function AdminPage() {
         cache: 'no-store',
       });
       const result = (await response.json()) as UsersResponse & { error?: string };
-      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, result.error);
+      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, setNeedsSignIn, result.error);
       if (!response.ok) throw new Error(result.error || 'Could not load user accounts.');
       setUsers(result.users);
       setTotal(result.pagination.total);
@@ -160,7 +170,7 @@ export default function AdminPage() {
         requests?: PaymentRequest[];
         error?: string;
       };
-      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, result.error);
+      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, setNeedsSignIn, result.error);
       if (!response.ok) throw new Error(result.error || 'Could not load payment requests.');
       setPaymentRequests(result.requests ?? []);
     } catch (cause) {
@@ -184,10 +194,20 @@ export default function AdminPage() {
           error?: string;
         };
         if (!response.ok) {
-          if (!cancelled) setAdminGateError(result.error || 'Enter the admin page password to continue.');
+          if (!cancelled) {
+            if (response.status === 401 || response.status === 403) {
+              setNeedsSignIn(true);
+              setAdminGateError('');
+            } else {
+              setAdminGateError(result.error || 'Enter the admin page password to continue.');
+            }
+          }
           return;
         }
-        if (!cancelled) setAdminUnlocked(Boolean(result.authenticated));
+        if (!cancelled) {
+          setNeedsSignIn(false);
+          setAdminUnlocked(Boolean(result.authenticated));
+        }
       } catch (cause) {
         if (!cancelled) {
           setAdminGateError(cause instanceof Error ? cause.message : 'Could not check admin page access.');
@@ -237,6 +257,46 @@ export default function AdminPage() {
     }
   }
 
+  async function signInAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSignInBusy(true);
+    setAdminGateError('');
+    try {
+      const expected = process.env.NEXT_PUBLIC_ADMIN_EMAIL?.trim().toLowerCase();
+      const email = adminEmail.trim().toLowerCase();
+      if (expected && email !== expected) {
+        setAdminGateError(`Use the administrator account: ${expected}.`);
+        return;
+      }
+      const { data, error } = await insforge.auth.signInWithPassword({
+        email: adminEmail.trim(),
+        password: accountPassword,
+      });
+      if (error) throw new Error(error.message);
+      if (!data?.user) throw new Error('Could not sign in with that email and password.');
+      if (!data.user.emailVerified) {
+        setAdminGateError('This account must verify its email before it can open the admin page.');
+        return;
+      }
+      setAccountPassword('');
+      setNeedsSignIn(false);
+      const response = await fetch('/api/admin/session', {
+        headers: authHeaders(),
+        cache: 'no-store',
+      });
+      const result = (await response.json()) as { authenticated?: boolean; error?: string };
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) setNeedsSignIn(true);
+        throw new Error(result.error || 'Could not verify admin access.');
+      }
+      setAdminUnlocked(Boolean(result.authenticated));
+    } catch (cause) {
+      setAdminGateError(cause instanceof Error ? cause.message : 'Could not sign in.');
+    } finally {
+      setSignInBusy(false);
+    }
+  }
+
   async function lockAdmin() {
     setAdminUnlocked(false);
     setAdminPassword('');
@@ -270,7 +330,7 @@ export default function AdminPage() {
         body: JSON.stringify({ userId: user.id, action, planId }),
       });
       const result = (await response.json()) as { error?: string };
-      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, result.error);
+      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, setNeedsSignIn, result.error);
       if (!response.ok) throw new Error(result.error || 'Could not update plan access.');
       setMessage(
         action === 'grant'
@@ -302,7 +362,7 @@ export default function AdminPage() {
         activity?: UserActivity[];
         error?: string;
       };
-      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, result.error);
+      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, setNeedsSignIn, result.error);
       if (!response.ok) throw new Error(result.error || 'Could not load request history.');
       setActivity((previous) => ({ ...previous, [userId]: result.activity ?? [] }));
     } catch (cause) {
@@ -329,7 +389,7 @@ export default function AdminPage() {
         code?: string | null;
         message?: string;
       };
-      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, result.error);
+      showAdminGateForResponse(response, setAdminUnlocked, setAdminGateError, setNeedsSignIn, result.error);
       if (!response.ok) throw new Error(result.error || 'Could not review payment.');
       setMessage(result.message || 'Payment request processed.');
       if (result.code) setIssuedCode({ email: request.user_email, code: result.code });
@@ -354,31 +414,73 @@ export default function AdminPage() {
       <main className="grid min-h-dvh place-items-center bg-app px-4 py-10 text-ink">
         <section className="w-full max-w-md rounded-3xl border border-line bg-panel p-6 sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Protected admin area</p>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight">Enter admin password</h1>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight">
+            {needsSignIn ? 'Sign in with the admin account' : 'Enter admin password'}
+          </h1>
           <p className="mt-2 text-sm leading-relaxed text-mute">
-            Sign in with the verified admin account, then enter the separate admin page password. Three incorrect passwords block this IP address for 24 hours.
+            {needsSignIn
+              ? 'Step 1 of 2: enter the administrator email and its account password. You will then unlock the page with the separate admin page password.'
+              : 'Step 2 of 2: enter the separate admin page password. Three incorrect passwords block this IP address for 24 hours.'}
           </p>
-          <form onSubmit={unlockAdmin} className="mt-6 space-y-3">
-            <label htmlFor="admin-page-password" className="block text-sm font-medium">Admin page password</label>
-            <input
-              id="admin-page-password"
-              type="password"
-              required
-              maxLength={256}
-              autoComplete="current-password"
-              value={adminPassword}
-              onChange={(event) => setAdminPassword(event.target.value)}
-              className="w-full rounded-xl border border-line bg-app px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
-            />
-            {adminGateError && <p role="alert" className="text-sm text-amber-500">{adminGateError}</p>}
-            <button
-              type="submit"
-              disabled={adminGateBusy}
-              className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {adminGateBusy ? 'Checking…' : 'Unlock admin page'}
-            </button>
-          </form>
+          {adminGateError && <p role="alert" className="mt-4 text-sm text-amber-500">{adminGateError}</p>}
+          {needsSignIn ? (
+            <form onSubmit={signInAdmin} className="mt-6 space-y-3">
+              <div>
+                <label htmlFor="admin-email" className="block text-sm font-medium">Admin email</label>
+                <input
+                  id="admin-email"
+                  type="email"
+                  required
+                  maxLength={254}
+                  autoComplete="username"
+                  value={adminEmail}
+                  onChange={(event) => setAdminEmail(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-line bg-app px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label htmlFor="admin-account-password" className="block text-sm font-medium">Account password</label>
+                <input
+                  id="admin-account-password"
+                  type="password"
+                  required
+                  maxLength={256}
+                  autoComplete="current-password"
+                  value={accountPassword}
+                  onChange={(event) => setAccountPassword(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-line bg-app px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={signInBusy}
+                className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {signInBusy ? 'Signing in…' : 'Sign in as admin'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={unlockAdmin} className="mt-6 space-y-3">
+              <label htmlFor="admin-page-password" className="block text-sm font-medium">Admin page password</label>
+              <input
+                id="admin-page-password"
+                type="password"
+                required
+                maxLength={256}
+                autoComplete="current-password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+                className="w-full rounded-xl border border-line bg-app px-3 py-2.5 text-sm text-ink outline-none focus:border-accent"
+              />
+              <button
+                type="submit"
+                disabled={adminGateBusy}
+                className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {adminGateBusy ? 'Checking…' : 'Unlock admin page'}
+              </button>
+            </form>
+          )}
           <Link href="/app" className="mt-4 inline-block text-sm text-mute underline underline-offset-4 hover:text-ink">
             Back to app
           </Link>

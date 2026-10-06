@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
   let planState: Awaited<ReturnType<typeof getUserPlanState>>;
   try {
-    planState = await getUserPlanState(auth.user.id);
+    planState = await getUserPlanState(auth.user);
   } catch (error) {
     console.error('Plan access check failed:', error);
     return NextResponse.json(

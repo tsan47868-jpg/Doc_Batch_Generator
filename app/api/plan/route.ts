@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     const auth = await authenticateRequest(request);
     if (!auth.user) return auth.response;
 
-    const { access, usage, active, plan, limits } = await getUserPlanState(auth.user.id);
+    const { access, usage, active, plan, limits } = await getUserPlanState(auth.user);
     return NextResponse.json({
       plan,
       active,
