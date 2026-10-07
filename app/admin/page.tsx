@@ -655,7 +655,7 @@ export default function AdminPage() {
                           {Math.max(0, user.limits.uploads - user.usage.uploads_used)} left)
                         </p>
                         <p className="mt-1 text-xs text-faint">
-                          Gemini this month: {user.geminiUsage.requests} calls ·{' '}
+                          AI this month: {user.geminiUsage.requests} calls ·{' '}
                           {user.geminiUsage.totalTokens.toLocaleString()} tokens
                           {user.geminiUsage.failed
                             ? ` · ${user.geminiUsage.failed} unsuccessful`
@@ -744,7 +744,7 @@ export default function AdminPage() {
                               </p>
                               <p className="mt-1 text-[11px] text-faint">
                                 Docs: {entry.documents_succeeded}/{entry.documents_requested} succeeded, {entry.documents_failed} failed
-                                {' · '}Gemini: {entry.gemini.calls} calls, {entry.gemini.totalTokens.toLocaleString()} tokens
+                                {' · '}AI: {entry.gemini.calls} calls, {entry.gemini.totalTokens.toLocaleString()} tokens
                                 {entry.gemini.failedCalls ? `, ${entry.gemini.failedCalls} unsuccessful` : ''}
                               </p>
                               {entry.documents.length > 0 && (

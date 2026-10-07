@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation';
 import JSZip from 'jszip';
 import type { UserSchema } from '@insforge/sdk';
 import { insforge } from '@/lib/insforge';
+import { GENERATION_MODES, isGenerationMode } from '@/lib/generation-modes';
+import type { GenerationMode } from '@/lib/generation-modes';
 
 type DocPlan = { title: string; description: string };
 
@@ -463,6 +465,7 @@ function AuthScreen({ onAuthed }: { onAuthed: (user: UserSchema) => void }) {
 
 export default function Home() {
   const router = useRouter();
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('gemini-1');
   const [file, setFile] = useState<File | null>(null);
   const [input, setInput] = useState('');
   const [sent, setSent] = useState<{ text: string; fileName: string } | null>(null);
@@ -810,6 +813,7 @@ export default function Home() {
     setError(null);
     setHint(null);
     setStatus(retryMode ? 'writing' : 'planning');
+    form.set('generationMode', generationMode);
 
     const saves: Promise<unknown>[] = [];
 
@@ -1483,6 +1487,32 @@ export default function Home() {
         >
           <ArrowUpIcon />
         </button>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 border-t border-line px-1 pt-2">
+        <span className="min-w-0 text-[11px] text-faint">
+          {generationMode === 'openrouter-free'
+            ? 'This generation will use OpenRouter; free-model limits vary.'
+            : generationMode === 'gemini-1'
+              ? 'This generation will use Gemini API 1.'
+              : `This generation will use Gemini API ${generationMode === 'gemini-2' ? '2' : '3'}.`}
+        </span>
+        <label className="flex shrink-0 items-center gap-2 text-xs text-mute">
+          <span>Send with</span>
+          <select
+            aria-label="Choose which AI API sends this generation"
+            value={generationMode}
+            disabled={busy}
+            onChange={(event) => {
+              const value = event.currentTarget.value;
+              if (isGenerationMode(value)) setGenerationMode(value);
+            }}
+            className="max-w-[190px] rounded-lg border border-line bg-app px-2 py-1.5 text-xs text-ink outline-none focus:border-accent disabled:opacity-50"
+          >
+            {GENERATION_MODES.map((mode) => (
+              <option key={mode.id} value={mode.id}>{mode.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
     </div>
   );

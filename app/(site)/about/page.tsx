@@ -42,9 +42,9 @@ export default function AboutPage() {
         <section>
           <h2 className="text-xl font-medium text-ink">How it is built</h2>
           <p className="mt-3 text-[15px] leading-relaxed text-mute">
-            The app runs on Next.js. Document planning and writing use
-            Google&apos;s Gemini models, accounts and file storage run on
-            InsForge, and generated Word files are produced with the
+            The app runs on Next.js. Document planning and writing can use
+            Gemini or OpenRouter&apos;s free-model router, accounts and file
+            storage run on InsForge, and generated Word files are produced with the
             open-source docx library. Every chat and file belongs to the
             account that created it — see the{' '}
             <a href="/privacy" className="text-accent hover:underline">

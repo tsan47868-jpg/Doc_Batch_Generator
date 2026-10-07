@@ -3,6 +3,9 @@ import { randomUUID } from 'node:crypto';
 import mammoth from 'mammoth';
 import { geminiJson, GeminiQuotaError } from '@/lib/gemini';
 import type { GeminiAttempt } from '@/lib/gemini';
+import { isGenerationMode } from '@/lib/generation-modes';
+import type { GenerationMode } from '@/lib/generation-modes';
+import { openrouterJson } from '@/lib/openrouter';
 import { buildDocx } from '@/lib/docx-builder';
 import {
   authenticateRequest,
@@ -111,6 +114,7 @@ export async function POST(req: NextRequest) {
   let chatId = '';
   let retryMode = false;
   let retryItems: DocItem[] | null = null;
+  let generationMode: GenerationMode = 'gemini-1';
 
   try {
     const form = await req.formData();
@@ -119,6 +123,13 @@ export async function POST(req: NextRequest) {
     instructions = String(form.get('instructions') || '').slice(0, 2000).trim();
     chatId = String(form.get('chatId') || '');
     retryMode = form.get('retryMode') === 'true';
+    const requestedMode = form.get('generationMode');
+    if (requestedMode !== null) {
+      if (typeof requestedMode !== 'string' || !isGenerationMode(requestedMode)) {
+        throw new Error('Invalid generation mode.');
+      }
+      generationMode = requestedMode;
+    }
 
     const retryRaw = form.get('retry');
     if (typeof retryRaw === 'string' && retryRaw.trim()) {
@@ -195,11 +206,28 @@ export async function POST(req: NextRequest) {
   }
   const batchSize = Math.min(DOC_COUNT, remainingDocuments);
 
-  const apiKey = process.env.GEMINI_API_KEY || '';
-  const openRouterKey = process.env.OPENROUTER_API_KEY || '';
-  if (!apiKey && !openRouterKey) {
+  const apiKey =
+    generationMode === 'gemini-1'
+      ? process.env.GEMINI_API_KEY_1 || process.env.GEMINI_API_KEY
+      : generationMode === 'gemini-2'
+        ? process.env.GEMINI_API_KEY_2
+        : generationMode === 'gemini-3'
+          ? process.env.GEMINI_API_KEY_3
+          : process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    if (generationMode !== 'gemini-1') {
+      const keyName = {
+        'gemini-2': 'GEMINI_API_KEY_2',
+        'gemini-3': 'GEMINI_API_KEY_3',
+        'openrouter-free': 'OPENROUTER_API_KEY',
+      }[generationMode];
+      return NextResponse.json(
+        { error: `This mode is not configured. Ask the administrator to set ${keyName}.` },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
-      { error: 'Server is missing AI API configuration (GEMINI_API_KEY or OPENROUTER_API_KEY). Add it to .env.local.' },
+      { error: 'Server is missing GEMINI_API_KEY_1 (or GEMINI_API_KEY). Add it to .env.local.' },
       { status: 500 },
     );
   }
@@ -270,8 +298,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const generateJson = async <T>(
+    prompt: string,
+    schema: object,
+    temperature = 0.9,
+    attempts = 4,
+    options: { onAttempt?: (attempt: GeminiAttempt) => Promise<void> } = {},
+  ): Promise<T> =>
+    generationMode === 'openrouter-free'
+      ? openrouterJson<T>(apiKey, prompt, schema, temperature, attempts, options)
+      : geminiJson<T>(apiKey, prompt, schema, temperature, attempts, options);
+
   let modelCallNumber = 0;
-  const trackGeminiAttempt = async (
+  const trackModelAttempt = async (
     operation: 'planning' | 'document',
     docIndex: number | null,
     attempt: GeminiAttempt,
@@ -291,7 +330,7 @@ export async function POST(req: NextRequest) {
       created_at: new Date().toISOString(),
     }]);
     if (error) {
-      throw new Error(`Could not record Gemini usage for call ${modelCallNumber}: ${error.message}`);
+      throw new Error(`Could not record AI usage for call ${modelCallNumber}: ${error.message}`);
     }
   };
 
@@ -321,17 +360,16 @@ export async function POST(req: NextRequest) {
             `\nSAMPLE:\n"""\n${sample}\n"""${sampleNote}`,
           ].join(' ');
 
-          const plan = await geminiJson<{ documents: DocPlan[] }>(
-            apiKey,
+          const plan = await generateJson<{ documents: DocPlan[] }>(
             planPrompt,
             planSchema,
             0.8,
             4,
-            { onAttempt: (attempt) => trackGeminiAttempt('planning', null, attempt) },
+            { onAttempt: (attempt) => trackModelAttempt('planning', null, attempt) },
           );
           const planned = (plan.documents || []).slice(0, batchSize);
           if (planned.length === 0) {
-            throw new Error('Gemini could not propose documents from this sample. Try again.');
+            throw new Error('The selected AI mode could not propose documents from this sample. Try again.');
           }
           docs = planned.map((d, i) => ({
             title: d.title.trim().slice(0, 200),
@@ -339,7 +377,7 @@ export async function POST(req: NextRequest) {
             index: i,
           })).filter((d) => d.title.length > 0);
           if (docs.length === 0) {
-            throw new Error('Gemini returned no usable document titles. Please try again.');
+            throw new Error('The selected AI mode returned no usable document titles. Please try again.');
           }
           send({
             type: 'plan',
@@ -369,13 +407,12 @@ export async function POST(req: NextRequest) {
                 `\nSAMPLE:\n"""\n${sample}\n"""${sampleNote}`,
               ].join(' ');
 
-              const doc = await geminiJson<{ title: string; content: string }>(
-                apiKey,
+              const doc = await generateJson<{ title: string; content: string }>(
                 docPrompt,
                 docSchema,
                 0.95,
                 4,
-                { onAttempt: (attempt) => trackGeminiAttempt('document', d.index, attempt) },
+                { onAttempt: (attempt) => trackModelAttempt('document', d.index, attempt) },
               );
 
               const buf = await buildDocx(d.title, doc.content);
